@@ -6,13 +6,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Bot.Connector.DirectLine" Version="3.0.2" />
-    <PackageReference Include="Microsoft.Rest.ClientRuntime" Version="2.3.10" />
-    <PackageReference Include="TweetinviAPI" Version="2.1.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Models\" />
-    <Folder Include="Cache\" />
+    <PackageReference Include="Microsoft.Rest.ClientRuntime" Version="2.3.21" />
+    <PackageReference Include="TweetinviAPI" Version="4.0.3" />
   </ItemGroup>
 
 </Project>

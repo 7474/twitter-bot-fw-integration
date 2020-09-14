@@ -8,7 +8,7 @@ using TwitterBotFWIntegration.Models;
 namespace TwitterBotFWIntegration.Tests
 {
     [TestClass]
-    public class InMemoryMessageAndUserIdCacheTests
+    public class InMemoryConversationCacheTests
     {
         /// <summary>
         /// The cache should purge expired records the lazy way, every time
@@ -22,7 +22,7 @@ namespace TwitterBotFWIntegration.Tests
 
             Assert.AreEqual(true, minCacheExpiryInSeconds > numberOfDualRecordsToCreate); // Sanity check
 
-            IMessageAndUserIdCache cache = new InMemoryMessageAndUserIdCache(minCacheExpiryInSeconds);
+            IConversationCache cache = new InMemoryConversationCache(minCacheExpiryInSeconds);
 
             DateTime recordCreationStartedTime = DateTime.Now;
 
@@ -30,7 +30,7 @@ namespace TwitterBotFWIntegration.Tests
             {
                 DateTime dateTimeStart = DateTime.Now;
 
-                MessageIdAndTimestamp messageIdAndTimestamp = new MessageIdAndTimestamp(i.ToString());
+                IdAndTimestamp messageIdAndTimestamp = new IdAndTimestamp(i.ToString());
 
                 bool recordAddedSuccessfully = cache.AddPendingReplyFromBotToTwitterUser(
                     messageIdAndTimestamp,

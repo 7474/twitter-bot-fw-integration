@@ -1,22 +1,28 @@
 ﻿using Microsoft.Bot.Connector.DirectLine;
 using System;
 using System.Collections.Generic;
+using Tweetinvi.Core.Extensions;
+using Tweetinvi.Models;
 using TwitterBotFWIntegration.Models;
 
 namespace TwitterBotFWIntegration.Cache
 {
     /// <summary>
-    /// An IN-MEMORY implementation of IMessageAndUserIdCache interface.
+    /// An IN-MEMORY implementation of IConversationCache interface.
     /// 
     /// This class is OK to be used for prototyping and testing, but a cloud storage based
     /// implementation is recommended to ensure reliable service in production enviroment.
     /// </summary>
-    public class InMemoryMessageAndUserIdCache : IMessageAndUserIdCache
+    public class InMemoryConversationCache : IConversationCache
     {
+        // XXX 遅延応答には30秒はちょっと短い。
         protected const int DefaultMinCacheExpiryInSeconds = 30;
-        protected Dictionary<MessageIdAndTimestamp, TwitterUserIdentifier> _twitterUsersWaitingForReply;
-        protected Dictionary<MessageIdAndTimestamp, Activity> _pendingRepliesFromBotToTwitterUser;
+        protected Dictionary<IdAndTimestamp, ITweet> _converstionToLatestTweet;
+        protected Dictionary<IdAndTimestamp, string> _tweetToConversation;
         protected int _minCacheExpiryInSeconds;
+
+        protected Dictionary<IdAndTimestamp, TwitterUserIdentifier> _twitterUsersWaitingForReply;
+        protected Dictionary<IdAndTimestamp, Activity> _pendingRepliesFromBotToTwitterUser;
 
         public IList<ActivityForTwitterUserBundle> GetPendingRepliesToTwitterUsers()
         {
@@ -27,7 +33,7 @@ namespace TwitterBotFWIntegration.Cache
 
             if (_twitterUsersWaitingForReply.Count > 0)
             {
-                foreach (MessageIdAndTimestamp messageIdAndTimestamp
+                foreach (IdAndTimestamp messageIdAndTimestamp
                     in _pendingRepliesFromBotToTwitterUser.Keys)
                 {
                     if (_twitterUsersWaitingForReply.ContainsKey(messageIdAndTimestamp))
@@ -48,14 +54,15 @@ namespace TwitterBotFWIntegration.Cache
         /// </summary>
         /// <param name="minCacheExpiryInSeconds">The minimum cache expiry time in seconds.
         /// If not provided, the default value is used.</param>
-        public InMemoryMessageAndUserIdCache(int minCacheExpiryInSeconds = DefaultMinCacheExpiryInSeconds)
+        public InMemoryConversationCache(int minCacheExpiryInSeconds = DefaultMinCacheExpiryInSeconds)
         {
-            _twitterUsersWaitingForReply = new Dictionary<MessageIdAndTimestamp, TwitterUserIdentifier>();
-            _pendingRepliesFromBotToTwitterUser = new Dictionary<MessageIdAndTimestamp, Activity>();
+            _twitterUsersWaitingForReply = new Dictionary<IdAndTimestamp, TwitterUserIdentifier>();
+            _pendingRepliesFromBotToTwitterUser = new Dictionary<IdAndTimestamp, Activity>();
+            _converstionToLatestTweet = new Dictionary<IdAndTimestamp, ITweet>();
             _minCacheExpiryInSeconds = minCacheExpiryInSeconds;
         }
 
-        public TwitterUserIdentifier GetTwitterUserWaitingForReply(MessageIdAndTimestamp messageIdAndTimestamp)
+        public TwitterUserIdentifier GetTwitterUserWaitingForReply(IdAndTimestamp messageIdAndTimestamp)
         {
             if (messageIdAndTimestamp != null
                 && _twitterUsersWaitingForReply.ContainsKey(messageIdAndTimestamp))
@@ -67,7 +74,7 @@ namespace TwitterBotFWIntegration.Cache
         }
 
         public bool AddTwitterUserWaitingForReply(
-            MessageIdAndTimestamp messageIdAndTimestamp, TwitterUserIdentifier twitterUserIdentifier)
+            IdAndTimestamp messageIdAndTimestamp, TwitterUserIdentifier twitterUserIdentifier)
         {
             if (messageIdAndTimestamp != null
                 && twitterUserIdentifier != null
@@ -80,12 +87,12 @@ namespace TwitterBotFWIntegration.Cache
             return false;
         }
 
-        public bool RemoveTwitterUserWaitingForReply(MessageIdAndTimestamp messageIdAndTimestamp)
+        public bool RemoveTwitterUserWaitingForReply(IdAndTimestamp messageIdAndTimestamp)
         {
             return _twitterUsersWaitingForReply.Remove(messageIdAndTimestamp);
         }
 
-        public Activity GetPendingReplyFromBotToTwitterUser(MessageIdAndTimestamp messageIdAndTimestamp)
+        public Activity GetPendingReplyFromBotToTwitterUser(IdAndTimestamp messageIdAndTimestamp)
         {
             if (messageIdAndTimestamp != null
                 && _pendingRepliesFromBotToTwitterUser.ContainsKey(messageIdAndTimestamp))
@@ -97,10 +104,10 @@ namespace TwitterBotFWIntegration.Cache
         }
 
         public bool AddPendingReplyFromBotToTwitterUser(
-            MessageIdAndTimestamp messageIdAndTimestamp, Activity pendingReplyActivity)
+            IdAndTimestamp messageIdAndTimestamp, Activity pendingReplyActivity)
         {
             if (messageIdAndTimestamp != null
-                && !string.IsNullOrEmpty(messageIdAndTimestamp.DirectLineMessageId)
+                && !string.IsNullOrEmpty(messageIdAndTimestamp.Id)
                 && pendingReplyActivity != null
                 && !_pendingRepliesFromBotToTwitterUser.ContainsKey(messageIdAndTimestamp))
             {
@@ -111,7 +118,7 @@ namespace TwitterBotFWIntegration.Cache
             return false;
         }
 
-        public bool RemovePendingReplyFromBotToTwitterUser(MessageIdAndTimestamp messageIdAndTimestamp)
+        public bool RemovePendingReplyFromBotToTwitterUser(IdAndTimestamp messageIdAndTimestamp)
         {
             return _pendingRepliesFromBotToTwitterUser.Remove(messageIdAndTimestamp);
         }
@@ -131,7 +138,7 @@ namespace TwitterBotFWIntegration.Cache
             {
                 wasRemoved = false;
 
-                foreach (MessageIdAndTimestamp messageIdAndTimestamp in _pendingRepliesFromBotToTwitterUser.Keys)
+                foreach (IdAndTimestamp messageIdAndTimestamp in _pendingRepliesFromBotToTwitterUser.Keys)
                 {
                     if (messageIdAndTimestamp.Timestamp.AddSeconds(_minCacheExpiryInSeconds) < dateTimeNow)
                     {
@@ -141,7 +148,7 @@ namespace TwitterBotFWIntegration.Cache
                     }
                 }
 
-                foreach (MessageIdAndTimestamp messageIdAndTimestamp in _twitterUsersWaitingForReply.Keys)
+                foreach (IdAndTimestamp messageIdAndTimestamp in _twitterUsersWaitingForReply.Keys)
                 {
                     if (messageIdAndTimestamp.Timestamp.AddSeconds(_minCacheExpiryInSeconds) < dateTimeNow)
                     {
@@ -151,6 +158,52 @@ namespace TwitterBotFWIntegration.Cache
                     }
                 }
             }
+        }
+
+        public bool PutLatestTweetOfConversation(IdAndTimestamp conversationIdAndTimestamp, ITweet tweet)
+        {
+            if (conversationIdAndTimestamp != null
+                && tweet != null)
+            {
+                _converstionToLatestTweet.AddOrUpdate(conversationIdAndTimestamp, tweet);
+                return true;
+            }
+
+            return false;
+        }
+
+        public ITweet GetLatestTweetOfConversation(IdAndTimestamp conversationIdAndTimestamp)
+        {
+            if (conversationIdAndTimestamp != null
+                && _converstionToLatestTweet.ContainsKey(conversationIdAndTimestamp))
+            {
+                return _converstionToLatestTweet[conversationIdAndTimestamp];
+            }
+
+            return null;
+        }
+
+        public bool PutConversationOfTweet(IdAndTimestamp tweetId, string conversationId)
+        {
+            if (tweetId != null
+                && conversationId != null)
+            {
+                _tweetToConversation.AddOrUpdate(tweetId, conversationId);
+                return true;
+            }
+
+            return false;
+        }
+
+        public string GetConversationOfTweet(IdAndTimestamp tweetId)
+        {
+            if (tweetId != null
+                && _tweetToConversation.ContainsKey(tweetId))
+            {
+                return _tweetToConversation[tweetId];
+            }
+
+            return null;
         }
     }
 }

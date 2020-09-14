@@ -1,7 +1,9 @@
 ﻿using Microsoft.Bot.Connector.DirectLine;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -59,7 +61,7 @@ namespace TwitterBotFWIntegration
         /// <returns>Message ID if successful. Null otherwise.</returns>
         public async Task<string> SendMessageAsync(string messageText, string senderId = null, string senderName = null)
         {
-            System.Diagnostics.Debug.WriteLine(
+            Debug.WriteLine(
                 $"Sending DL message from {(string.IsNullOrEmpty(senderName) ? "sender" : senderName)}, ID '{senderId}'");
 
             Activity activityToSend = new Activity
@@ -87,6 +89,7 @@ namespace TwitterBotFWIntegration
         /// <returns></returns>
         public async Task PollMessagesAsync(string conversationId = null)
         {
+            // TODO 会話のIDは会話毎に発行してキャッシュする
             if (!string.IsNullOrEmpty(conversationId) || !string.IsNullOrEmpty(_conversation?.ConversationId))
             {
                 conversationId = string.IsNullOrEmpty(conversationId) ? _conversation.ConversationId : conversationId;
@@ -103,7 +106,8 @@ namespace TwitterBotFWIntegration
 #if DEBUG
                     if (activitySet.Activities?.Count > 0)
                     {
-                        System.Diagnostics.Debug.WriteLine($"{activitySet.Activities?.Count} activity/activities received");
+                        Debug.WriteLine($"{activitySet.Activities?.Count} activity/activities received");
+                        Debug.WriteLine(JsonConvert.SerializeObject(activitySet.Activities));
                     }
 #endif
 
@@ -134,7 +138,7 @@ namespace TwitterBotFWIntegration
         {
             if (_backgroundWorker.IsBusy)
             {
-                System.Diagnostics.Debug.WriteLine("Already polling");
+                Debug.WriteLine("Already polling");
                 return false;
             }
 
@@ -155,7 +159,7 @@ namespace TwitterBotFWIntegration
             }
             catch (InvalidOperationException e)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to stop polling: {e.Message}");
+                Debug.WriteLine($"Failed to stop polling: {e.Message}");
             }
         }
 
@@ -196,7 +200,7 @@ namespace TwitterBotFWIntegration
 
         private void BackgroundWorkerDone(object sender, RunWorkerCompletedEventArgs e)
         {
-            System.Diagnostics.Debug.WriteLine("Background worker finished");
+            Debug.WriteLine("Background worker finished");
         }
     }
 }
