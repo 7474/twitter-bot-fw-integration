@@ -16,7 +16,7 @@ namespace TwitterBotFWIntegration
     {
         protected DirectLineManager _directLineManager;
         protected TwitterManager _twitterManager;
-        protected IConversationCache _conversationCache;
+        protected ITweetConversationCache _conversationCache;
 
         /// <summary>
         /// Constructor.
@@ -32,11 +32,12 @@ namespace TwitterBotFWIntegration
             string consumerKey, string consumerSecret,
             string bearerToken = null,
             string accessToken = null, string accessTokenSecret = null,
-            IConversationCache conversationCache = null)
+            IDirectLineConversationCache directLineConversationCache = null,
+            ITweetConversationCache tweetConversationCache = null)
         {
-            _directLineManager = new DirectLineManager(directLineSecret);
+            _directLineManager = new DirectLineManager(directLineSecret, directLineConversationCache ?? new InMemoryConversationCache());
             _twitterManager = new TwitterManager(consumerKey, consumerSecret, bearerToken, accessToken, accessTokenSecret);
-            _conversationCache = conversationCache ?? new InMemoryConversationCache();
+            _conversationCache = tweetConversationCache ?? new InMemoryConversationCache();
 
             _directLineManager.ActivitiesReceived += OnActivitiesReceived;
             _twitterManager.TweetReceived += OnTweetReceivedAsync;
@@ -95,21 +96,19 @@ namespace TwitterBotFWIntegration
             }
 
             string conversationId = activity.Conversation.Id;
-
-            if (string.IsNullOrEmpty(conversationId))
-            {
-                throw new ArgumentNullException("The activity is missing the 'Conversation'");
-            }
+            var rootTweet = _conversationCache.GetRootTweetOfConversation(new IdAndTimestamp(conversationId));
 
             Debug.WriteLine(
                 $"Replying to user '{tweet.CreatedBy.ScreenName}' using message in activity with conversation ID '{conversationId}'");
 
             var replyTweet = _twitterManager.SendReply(
                 activity.Text, tweet.Id,
-                tweet.CreatedBy.ScreenName, tweet.InReplyToScreenName);
+                tweet.CreatedBy.ScreenName, tweet.InReplyToScreenName, rootTweet?.CreatedBy.ScreenName);
 
             // 続きを呟くためのに入れておく
             _conversationCache.PutLatestTweetOfConversation(new IdAndTimestamp(conversationId), replyTweet);
+            // XXX 転置は勝手に作ってもいいかもしれない
+            _conversationCache.PutConversationOfTweet(new IdAndTimestamp(replyTweet.IdStr), conversationId);
         }
 
         /// <summary>
@@ -123,28 +122,19 @@ namespace TwitterBotFWIntegration
         {
             foreach (Activity activity in activities)
             {
-                // TODO Botとのやり取りはConversationでまとめたい。
-                string messageId = activity.ReplyToId;
                 string conversationId = activity.Conversation.Id;
 
-                if (!string.IsNullOrEmpty(messageId))
+                var tweet = _conversationCache.GetLatestTweetOfConversation(new IdAndTimestamp(conversationId));
+                if (tweet != null)
                 {
-                    var messageIdAndTimestamp = new IdAndTimestamp(messageId);
-                    var tweet = _conversationCache.GetLatestTweetOfConversation(new IdAndTimestamp(conversationId));
-                    if (tweet == null)
-                    {
-                        tweet = _conversationCache.GetLatestTweetOfConversation(messageIdAndTimestamp);
-                    }
-                    if (tweet != null)
-                    {
-                        ReplyTweetInTwitter(activity, tweet);
-                    }
-                    else
-                    {
-                        // XXX Userじゃない単にペンディングなだけ
-                        _conversationCache.AddPendingReplyFromBotToTwitterUser(messageIdAndTimestamp, activity);
-                        Debug.WriteLine($"Stored activity with message ID '{messageId}'");
-                    }
+                    ReplyTweetInTwitter(activity, tweet);
+                }
+                else
+                {
+                    // XXX Userじゃない単にペンディングなだけ
+                    // TODO なんか処理する、とは言えどうにもならん気がする
+                    //_conversationCache.AddPendingReplyFromBotToTwitterUser(messageIdAndTimestamp, activity);
+                    Debug.WriteLine($"Stored activity with conversation ID '{conversationId}'");
                 }
 
                 //string messageId = activity.ReplyToId;
@@ -175,32 +165,36 @@ namespace TwitterBotFWIntegration
         /// <param name="messageEventArgs">Contains the Twitter message details.</param>
         protected virtual async void OnTweetReceivedAsync(object sender, Tweetinvi.Events.MatchedTweetReceivedEventArgs messageEventArgs)
         {
-            string messageId = await _directLineManager.SendMessageAsync(
-                messageEventArgs.Tweet.Text,
-                messageEventArgs.Tweet.CreatedBy.UserIdentifier.IdStr,
-                messageEventArgs.Tweet.CreatedBy.UserIdentifier.ScreenName);
+            var tweet = messageEventArgs.Tweet;
+            var conversationId = string.IsNullOrEmpty(tweet.InReplyToStatusIdStr)
+                ? null
+                : _conversationCache.GetConversationOfTweet(new IdAndTimestamp(tweet.InReplyToStatusIdStr));
+            var sendResult = await _directLineManager.SendMessageAsync(
+                 conversationId,
+                 tweet.Text,
+                 tweet.CreatedBy.UserIdentifier.IdStr,
+                 tweet.CreatedBy.UserIdentifier.ScreenName);
 
-            if (string.IsNullOrEmpty(messageId))
+            if (sendResult == null)
             {
                 Debug.WriteLine(
-                    $"Failed to send the message from user '{messageEventArgs.Tweet.CreatedBy.UserIdentifier.ScreenName}' to the bot - message text was '{messageEventArgs.Tweet.Text}'");
+                    $"Failed to send the message from user '{tweet.CreatedBy.UserIdentifier.ScreenName}' to the bot - message text was '{tweet.Text}'");
             }
             else
             {
                 Debug.WriteLine(
-                    $"Message from user '{messageEventArgs.Tweet.CreatedBy.UserIdentifier.ScreenName}' successfully sent to the bot - message ID is '{messageId}'");
-
-                IdAndTimestamp messageIdAndTimestamp = new IdAndTimestamp(messageId);
+                    $"Message from user '{tweet.CreatedBy.UserIdentifier.ScreenName}' successfully sent to the bot - message ID is '{sendResult.MessageId}'");
 
                 // Store the Twitter user details so that we know who to reply to
                 // XXX DM時にメッセージを入れる
+                //IdAndTimestamp messageIdAndTimestamp = new IdAndTimestamp(messageId);
                 //TwitterUserIdentifier twitterUserIdentifier = new TwitterUserIdentifier()
                 //{
-                //    TwitterUserId = messageEventArgs.Tweet.CreatedBy.UserIdentifier.Id,
-                //    ScreenName = messageEventArgs.Tweet.CreatedBy.UserIdentifier.ScreenName
+                //    TwitterUserId = tweet.CreatedBy.UserIdentifier.Id,
+                //    ScreenName = tweet.CreatedBy.UserIdentifier.ScreenName
                 //};
                 //_conversationCache.AddTwitterUserWaitingForReply(messageIdAndTimestamp, twitterUserIdentifier);
-                _conversationCache.PutLatestTweetOfConversation(messageIdAndTimestamp, messageEventArgs.Tweet);
+                _conversationCache.PutLatestTweetOfConversation(new IdAndTimestamp(sendResult.Conversation.ConversationId), tweet);
 
                 _directLineManager.StartPolling();
             }

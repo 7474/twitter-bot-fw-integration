@@ -1,6 +1,7 @@
 ﻿using Microsoft.Bot.Connector.DirectLine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Tweetinvi.Core.Extensions;
 using Tweetinvi.Models;
 using TwitterBotFWIntegration.Models;
@@ -13,16 +14,34 @@ namespace TwitterBotFWIntegration.Cache
     /// This class is OK to be used for prototyping and testing, but a cloud storage based
     /// implementation is recommended to ensure reliable service in production enviroment.
     /// </summary>
-    public class InMemoryConversationCache : IConversationCache
+    public class InMemoryConversationCache : IDirectLineConversationCache, ITweetConversationCache
     {
         // XXX 遅延応答には30秒はちょっと短い。
         protected const int DefaultMinCacheExpiryInSeconds = 30;
         protected Dictionary<IdAndTimestamp, ITweet> _converstionToLatestTweet;
+        protected Dictionary<IdAndTimestamp, ITweet> _converstionToRootTweet;
         protected Dictionary<IdAndTimestamp, string> _tweetToConversation;
+        protected Dictionary<IdAndTimestamp, ConversationContext> _conversationContexts;
         protected int _minCacheExpiryInSeconds;
 
         protected Dictionary<IdAndTimestamp, TwitterUserIdentifier> _twitterUsersWaitingForReply;
         protected Dictionary<IdAndTimestamp, Activity> _pendingRepliesFromBotToTwitterUser;
+
+        /// <summary>
+        /// Constructor.
+        /// </summary>
+        /// <param name="minCacheExpiryInSeconds">The minimum cache expiry time in seconds.
+        /// If not provided, the default value is used.</param>
+        public InMemoryConversationCache(int minCacheExpiryInSeconds = DefaultMinCacheExpiryInSeconds)
+        {
+            _twitterUsersWaitingForReply = new Dictionary<IdAndTimestamp, TwitterUserIdentifier>();
+            _pendingRepliesFromBotToTwitterUser = new Dictionary<IdAndTimestamp, Activity>();
+            _converstionToLatestTweet = new Dictionary<IdAndTimestamp, ITweet>();
+            _converstionToRootTweet = new Dictionary<IdAndTimestamp, ITweet>();
+            _tweetToConversation = new Dictionary<IdAndTimestamp, string>();
+            _conversationContexts = new Dictionary<IdAndTimestamp, ConversationContext>();
+            _minCacheExpiryInSeconds = minCacheExpiryInSeconds;
+        }
 
         public IList<ActivityForTwitterUserBundle> GetPendingRepliesToTwitterUsers()
         {
@@ -47,19 +66,6 @@ namespace TwitterBotFWIntegration.Cache
             }
 
             return messageToTwitterUserBundles;
-        }
-
-        /// <summary>
-        /// Constructor.
-        /// </summary>
-        /// <param name="minCacheExpiryInSeconds">The minimum cache expiry time in seconds.
-        /// If not provided, the default value is used.</param>
-        public InMemoryConversationCache(int minCacheExpiryInSeconds = DefaultMinCacheExpiryInSeconds)
-        {
-            _twitterUsersWaitingForReply = new Dictionary<IdAndTimestamp, TwitterUserIdentifier>();
-            _pendingRepliesFromBotToTwitterUser = new Dictionary<IdAndTimestamp, Activity>();
-            _converstionToLatestTweet = new Dictionary<IdAndTimestamp, ITweet>();
-            _minCacheExpiryInSeconds = minCacheExpiryInSeconds;
         }
 
         public TwitterUserIdentifier GetTwitterUserWaitingForReply(IdAndTimestamp messageIdAndTimestamp)
@@ -160,24 +166,68 @@ namespace TwitterBotFWIntegration.Cache
             }
         }
 
-        public bool PutLatestTweetOfConversation(IdAndTimestamp conversationIdAndTimestamp, ITweet tweet)
+        public bool PutConversation(IdAndTimestamp conversationId, ConversationContext conversationContext)
         {
-            if (conversationIdAndTimestamp != null
-                && tweet != null)
+            if (conversationId != null
+                && conversationContext != null)
             {
-                _converstionToLatestTweet.AddOrUpdate(conversationIdAndTimestamp, tweet);
+                _conversationContexts.AddOrUpdate(conversationId, conversationContext);
                 return true;
             }
 
             return false;
         }
 
-        public ITweet GetLatestTweetOfConversation(IdAndTimestamp conversationIdAndTimestamp)
+        public ConversationContext GetConversation(IdAndTimestamp conversationId)
         {
-            if (conversationIdAndTimestamp != null
-                && _converstionToLatestTweet.ContainsKey(conversationIdAndTimestamp))
+            if (conversationId != null
+                && _conversationContexts.ContainsKey(conversationId))
             {
-                return _converstionToLatestTweet[conversationIdAndTimestamp];
+                return _conversationContexts[conversationId];
+            }
+
+            return null;
+        }
+
+        public IEnumerable<ConversationContext> GetConversations()
+        {
+            // XXX 複製にならないかも？
+            return _conversationContexts.Values.ToList();
+        }
+
+        public bool PutLatestTweetOfConversation(IdAndTimestamp conversationId, ITweet tweet)
+        {
+            if (conversationId != null
+                && tweet != null)
+            {
+                _converstionToLatestTweet.AddOrUpdate(conversationId, tweet);
+                if (!_converstionToRootTweet.ContainsKey(conversationId))
+                {
+                    _converstionToRootTweet.Add(conversationId, tweet);
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        public ITweet GetLatestTweetOfConversation(IdAndTimestamp conversationId)
+        {
+            if (conversationId != null
+                && _converstionToLatestTweet.ContainsKey(conversationId))
+            {
+                return _converstionToLatestTweet[conversationId];
+            }
+
+            return null;
+        }
+
+        public ITweet GetRootTweetOfConversation(IdAndTimestamp conversationId)
+        {
+            if (conversationId != null
+                && _converstionToRootTweet.ContainsKey(conversationId))
+            {
+                return _converstionToRootTweet[conversationId];
             }
 
             return null;

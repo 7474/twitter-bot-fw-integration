@@ -113,6 +113,7 @@ namespace TwitterBotFWIntegration
                 toScreanNames
                     .Where(x => !string.IsNullOrEmpty(x))
                     .Where(x => x != _botScreenName)
+                    .Distinct()
                     .Select(x => "@" + x));
 
             // TODO メッセージをURLなどを考慮した長さに正規化する

@@ -10,7 +10,7 @@ namespace TwitterBotFWIntegration.Cache
     /// message routing between Twitter and Direct Line despite the asynchronous behaviour, which
     /// otherwise might cause missing replies to the user.
     /// </summary>
-    public interface IConversationCache
+    public interface ITweetConversationCache
     {
         /// <summary>
         /// Checks the pending replies ready to be sent and packages them into a list.
@@ -64,12 +64,12 @@ namespace TwitterBotFWIntegration.Cache
         /// <returns>True, if successfully removed. False otherwise.</returns>
         bool RemovePendingReplyFromBotToTwitterUser(IdAndTimestamp messageIdAndTimestamp);
 
-
         // For reply
         // TODO MessageIdAndTimestamp ではなく会話のIDにして最新の返信先を持つ
         // TODO ITweetではなく必要な情報を持つオブジェクトにする
-        bool PutLatestTweetOfConversation(IdAndTimestamp conversationIdAndTimestamp, ITweet tweet);
-        ITweet GetLatestTweetOfConversation(IdAndTimestamp conversationIdAndTimestamp);
+        bool PutLatestTweetOfConversation(IdAndTimestamp conversationId, ITweet tweet);
+        ITweet GetLatestTweetOfConversation(IdAndTimestamp conversationId);
+        ITweet GetRootTweetOfConversation(IdAndTimestamp conversationId);
 
         // For tweet to converstion
         bool PutConversationOfTweet(IdAndTimestamp tweetId, string conversationId);
