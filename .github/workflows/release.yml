@@ -1,0 +1,26 @@
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 3.1
+    - name: Install dependencies
+      run: dotnet restore
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+#     - name: Test
+#       run: dotnet test --no-restore --verbosity normal
+    - name: Pack
+      run: dotnet pack --configuration Release ./TwitterBotFWIntegration/TwitterBotFWIntegration.csproj
+
+    # https://docs.github.com/ja/packages/using-github-packages-with-your-projects-ecosystem/configuring-dotnet-cli-for-use-with-github-packages
+    - name: Push NuGet Package
+      run: dotnet nuget push "./TwitterBotFWIntegration/bin/Release/TwitterBotFWIntegration.1.0.0.nupkg" --source "github" --api-key "${{ secrets.GITHUB_TOKEN }}"
