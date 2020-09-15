@@ -13,7 +13,6 @@ namespace TwitterBotFWIntegration.Cache
     public interface ITweetConversationCache
     {
         // For reply
-        // TODO MessageIdAndTimestamp ではなく会話のIDにして最新の返信先を持つ
         // TODO ITweetではなく必要な情報を持つオブジェクトにする
         bool PutLatestTweetOfConversation(IdAndTimestamp conversationId, ITweet tweet);
         ITweet GetLatestTweetOfConversation(IdAndTimestamp conversationId);
