@@ -22,5 +22,7 @@ jobs:
       run: dotnet pack --configuration Release ./TwitterBotFWIntegration/TwitterBotFWIntegration.csproj
 
     # https://docs.github.com/ja/packages/using-github-packages-with-your-projects-ecosystem/configuring-dotnet-cli-for-use-with-github-packages
+    - name: Add NuGet Package Source
+      run: dotnet nuget add source https://nuget.pkg.github.com/7474/index.json -n github -u 7474 -p GH_TOKEN "${{ secrets.GITHUB_TOKEN }}"
     - name: Push NuGet Package
-      run: dotnet nuget push "./TwitterBotFWIntegration/bin/Release/TwitterBotFWIntegration.1.0.0.nupkg" --source "github" --api-key "${{ secrets.GITHUB_TOKEN }}"
+      run: dotnet nuget push "./TwitterBotFWIntegration/bin/Release/TwitterBotFWIntegration.1.0.0.nupkg" --source "github"
