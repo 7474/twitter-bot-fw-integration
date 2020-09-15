@@ -1,10 +1,14 @@
 ﻿using Microsoft.Bot.Connector.DirectLine;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using TwitterBotFWIntegration.Cache;
+using TwitterBotFWIntegration.Models;
 
 namespace TwitterBotFWIntegration
 {
@@ -15,24 +19,28 @@ namespace TwitterBotFWIntegration
         /// </summary>
         public event EventHandler<IList<Activity>> ActivitiesReceived;
 
-        private const int DefaultPollingIntervalInMilliseconds = 2000; 
+        private const int DefaultPollingIntervalInMilliseconds = 2000;
 
         private BackgroundWorker _backgroundWorker;
         private SynchronizationContext _synchronizationContext;
-        private Conversation _conversation;
         private string _directLineSecret;
-        private string _watermark;
         private int _pollingIntervalInMilliseconds;
+
+        private IDirectLineConversationCache _conversationCache;
 
         /// <summary>
         /// Constructor.
         /// </summary>
         /// <param name="directLineSecret">The Direct Line secret associated with the bot.</param>
-        public DirectLineManager(string directLineSecret)
+        public DirectLineManager(string directLineSecret, IDirectLineConversationCache conversationCache)
         {
             if (string.IsNullOrEmpty(directLineSecret))
             {
                 throw new ArgumentNullException("Direct Line secret is null or empty");
+            }
+            if (conversationCache == null)
+            {
+                throw new ArgumentNullException("conversationCache is null");
             }
 
             _backgroundWorker = new BackgroundWorker();
@@ -40,6 +48,7 @@ namespace TwitterBotFWIntegration
             _backgroundWorker.RunWorkerCompleted += new RunWorkerCompletedEventHandler(BackgroundWorkerDone);
 
             _directLineSecret = directLineSecret;
+            _conversationCache = conversationCache;
         }
 
         public void Dispose()
@@ -53,13 +62,14 @@ namespace TwitterBotFWIntegration
         /// <summary>
         /// Sends the given message to the bot.
         /// </summary>
+        /// <param name="conversation"></param>
         /// <param name="messageText">The message to send.</param>
         /// <param name="senderId">The sender ID.</param>
         /// <param name="senderName">The sender name.</param>
         /// <returns>Message ID if successful. Null otherwise.</returns>
-        public async Task<string> SendMessageAsync(string messageText, string senderId = null, string senderName = null)
+        public async Task<DirectLineSendResult> SendMessageAsync(string conversationId, string messageText, string senderId = null, string senderName = null)
         {
-            System.Diagnostics.Debug.WriteLine(
+            Debug.WriteLine(
                 $"Sending DL message from {(string.IsNullOrEmpty(senderName) ? "sender" : senderName)}, ID '{senderId}'");
 
             Activity activityToSend = new Activity
@@ -69,15 +79,15 @@ namespace TwitterBotFWIntegration
                 Text = messageText
             };
 
-            ResourceResponse resourceResponse = await PostActivityAsync(activityToSend);
+            var res = await PostActivityAsync(conversationId, activityToSend);
 
-            if (resourceResponse != null)
+            // TODO Polling見直しからStreamへ段階的に移行していく
+            if (res != null)
             {
                 StartPolling();
-                return resourceResponse.Id;
             }
 
-            return null;
+            return res;
         }
 
         /// <summary>
@@ -85,42 +95,47 @@ namespace TwitterBotFWIntegration
         /// </summary>
         /// <param name="conversationId">The ID of the conversation.</param>
         /// <returns></returns>
-        public async Task PollMessagesAsync(string conversationId = null)
+        public async Task PollMessagesAsync(string conversationId)
         {
-            if (!string.IsNullOrEmpty(conversationId) || !string.IsNullOrEmpty(_conversation?.ConversationId))
+            if (string.IsNullOrEmpty(conversationId))
             {
-                conversationId = string.IsNullOrEmpty(conversationId) ? _conversation.ConversationId : conversationId;
-                ActivitySet activitySet = null;
+                return;
+            }
 
-                using (DirectLineClient directLineClient = new DirectLineClient(_directLineSecret))
+            ActivitySet activitySet = null;
+
+            using (DirectLineClient directLineClient = new DirectLineClient(_directLineSecret))
+            {
+                var watermark = _conversationCache.GetConversation(new IdAndTimestamp(conversationId))?.ActivityWaterMark;
+                var conversation = directLineClient.Conversations.ReconnectToConversation(conversationId);
+                activitySet = await directLineClient.Conversations.GetActivitiesAsync(conversationId, watermark);
+                // XXX WarterMarkこの段階で処理してしまうのはちょっと嫌。
+                _conversationCache.PutConversation(
+                    new IdAndTimestamp(conversationId),
+                    new ConversationContext(conversation, activitySet?.Watermark));
+            }
+
+            if (activitySet != null)
+            {
+                Debug.WriteLine($"conversationId {conversationId} {activitySet.Activities?.Count} activity/activities received");
+                if (activitySet.Activities?.Count > 0)
                 {
-                    directLineClient.Conversations.ReconnectToConversation(conversationId);
-                    activitySet = await directLineClient.Conversations.GetActivitiesAsync(conversationId, _watermark);
+                    Debug.WriteLine(JsonConvert.SerializeObject(activitySet.Activities));
                 }
 
-                if (activitySet != null)
+                // ボットへ送る方向のアクティビティは処理しない。
+                // TODO このDirectLineClientではその方向のアクティビティに ReplyToId を指定していないためそれでフィルタしているが、恐らく正しいフィルタではない。
+                var activities = activitySet.Activities
+                    .Where(x => !string.IsNullOrEmpty(x.ReplyToId))
+                    .ToList();
+
+                if (_synchronizationContext != null)
                 {
-#if DEBUG
-                    if (activitySet.Activities?.Count > 0)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"{activitySet.Activities?.Count} activity/activities received");
-                    }
-#endif
-
-                    _watermark = activitySet?.Watermark;
-
-                    var activities = (from activity in activitySet.Activities
-                                      select activity)
-                                      .ToList();
-
-                    if (_synchronizationContext != null)
-                    {
-                        _synchronizationContext.Post((o) => ActivitiesReceived?.Invoke(this, activities), null);
-                    }
-                    else
-                    {
-                        ActivitiesReceived?.Invoke(this, activities);
-                    }
+                    _synchronizationContext.Post((o) => ActivitiesReceived?.Invoke(this, activities), null);
+                }
+                else
+                {
+                    ActivitiesReceived?.Invoke(this, activities);
                 }
             }
         }
@@ -134,7 +149,7 @@ namespace TwitterBotFWIntegration
         {
             if (_backgroundWorker.IsBusy)
             {
-                System.Diagnostics.Debug.WriteLine("Already polling");
+                Debug.WriteLine("Already polling");
                 return false;
             }
 
@@ -155,7 +170,7 @@ namespace TwitterBotFWIntegration
             }
             catch (InvalidOperationException e)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to stop polling: {e.Message}");
+                Debug.WriteLine($"Failed to stop polling: {e.Message}");
             }
         }
 
@@ -164,39 +179,50 @@ namespace TwitterBotFWIntegration
         /// </summary>
         /// <param name="activity">The activity to send.</param>
         /// <returns>The resoure response.</returns>
-        private async Task<ResourceResponse> PostActivityAsync(Activity activity)
+        private async Task<DirectLineSendResult> PostActivityAsync(string conversationId, Activity activity)
         {
             ResourceResponse resourceResponse = null;
+            var conversationContext = string.IsNullOrEmpty(conversationId)
+                ? null
+                : _conversationCache.GetConversation(new IdAndTimestamp(conversationId));
+            var conversation = conversationContext?.Conversation;
 
             using (DirectLineClient directLineClient = new DirectLineClient(_directLineSecret))
             {
-                if (_conversation == null)
+                // TODO conversation.ExpiresIn
+                if (conversation == null)
                 {
-                    _conversation = directLineClient.Conversations.StartConversation();
+                    conversation = directLineClient.Conversations.StartConversation();
+                    _conversationCache.PutConversation(
+                        new IdAndTimestamp(conversation.ConversationId),
+                        new ConversationContext(conversation, ""));
                 }
                 else
                 {
-                    directLineClient.Conversations.ReconnectToConversation(_conversation.ConversationId);
+                    directLineClient.Conversations.ReconnectToConversation(conversation.ConversationId);
                 }
 
-                resourceResponse = await directLineClient.Conversations.PostActivityAsync(_conversation.ConversationId, activity);
+                resourceResponse = await directLineClient.Conversations.PostActivityAsync(conversation.ConversationId, activity);
             }
 
-            return resourceResponse;
+            return new DirectLineSendResult(conversation, resourceResponse.Id);
         }
 
         private async void RunPollMessagesLoopAsync(object sender, DoWorkEventArgs e)
         {
             while (!e.Cancel)
             {
-                await PollMessagesAsync();
-                Thread.Sleep(_pollingIntervalInMilliseconds);
+                foreach (var conversation in _conversationCache.GetConversations())
+                {
+                    await PollMessagesAsync(conversation?.Conversation?.ConversationId);
+                    Thread.Sleep(_pollingIntervalInMilliseconds);
+                }
             }
         }
 
         private void BackgroundWorkerDone(object sender, RunWorkerCompletedEventArgs e)
         {
-            System.Diagnostics.Debug.WriteLine("Background worker finished");
+            Debug.WriteLine("Background worker finished");
         }
     }
 }

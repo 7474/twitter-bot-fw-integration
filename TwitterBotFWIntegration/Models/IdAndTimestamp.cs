@@ -7,21 +7,23 @@ namespace TwitterBotFWIntegration.Models
     /// an incoming reply from the bot) and a timestamp.
     /// 
     /// Note that all comparisons are done using the message ID only!
+    /// 
+    /// XXX サマリは古い
     /// </summary>
-    public class MessageIdAndTimestamp : IEquatable<MessageIdAndTimestamp>
+    public class IdAndTimestamp : IEquatable<IdAndTimestamp>
     {
-        public MessageIdAndTimestamp(string messageId)
+        public IdAndTimestamp(string id)
         {
-            if (string.IsNullOrEmpty(messageId))
+            if (string.IsNullOrEmpty(id))
             {
                 throw new ArgumentNullException("Message ID cannot be null or empty");
             }
 
-            DirectLineMessageId = messageId;
+            Id = id;
             Timestamp = DateTime.Now;
         }
 
-        public string DirectLineMessageId
+        public string Id
         {
             get;
             private set;
@@ -33,21 +35,14 @@ namespace TwitterBotFWIntegration.Models
             private set;
         }
 
-        public bool Equals(MessageIdAndTimestamp other)
+        public bool Equals(IdAndTimestamp other)
         {
-            return (other.DirectLineMessageId.Equals(DirectLineMessageId));
+            return (other.Id.Equals(Id));
         }
 
         public override int GetHashCode()
         {
-            int result = 0;
-
-            for (int i = 0; i < DirectLineMessageId.Length; ++i)
-            {
-                result += DirectLineMessageId[i];
-            }
-
-            return result;
+            return Id.GetHashCode();
         }
     }
 }
