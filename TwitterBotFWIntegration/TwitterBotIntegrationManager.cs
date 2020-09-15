@@ -24,6 +24,7 @@ namespace TwitterBotFWIntegration
         /// <param name="directLineSecret">The Direct Line secret associated with the bot.</param>
         /// <param name="consumerKey">The Twitter consumer key.</param>
         /// <param name="consumerSecret">The Twitter consumer secret.</param>
+        /// <param name="bearerToken"></param>
         /// <param name="accessToken">The Twitter app access token.</param>
         /// <param name="accessTokenSecret">The Twitter app secret.</param>
         /// <param name="conversationCache">A message and user ID cache implementation.</param>
@@ -59,33 +60,6 @@ namespace TwitterBotFWIntegration
             _directLineManager.Dispose();
             _twitterManager.Dispose();
         }
-
-        ///// <summary>
-        ///// Sends the message in the given activity to the user in Twitter with the given identity.
-        ///// Both the activity and the Twitter user identifier are removed from the collections.
-        ///// </summary>
-        ///// <param name="activity">The activity containing the message.</param>
-        ///// <param name="twitterUserIdentifier">The IDs of the Twitter user to reply to.</param>
-        //[MethodImpl(MethodImplOptions.Synchronized)]
-        //protected virtual void ReplyInTwitter(Activity activity, TwitterUserIdentifier twitterUserIdentifier)
-        //{
-        //    if (activity == null || twitterUserIdentifier == null)
-        //    {
-        //        throw new ArgumentNullException("Either the activity or the Twitter user identifier is null");
-        //    }
-
-        //    string messageId = activity.ReplyToId;
-
-        //    if (string.IsNullOrEmpty(messageId))
-        //    {
-        //        throw new ArgumentNullException("The activity is missing the 'reply to ID'");
-        //    }
-
-        //    Debug.WriteLine(
-        //        $"Replying to user '{twitterUserIdentifier.ScreenName}' using message in activity with message ID '{messageId}'");
-
-        //    _twitterManager.SendMessage(activity.Text, twitterUserIdentifier.TwitterUserId, twitterUserIdentifier.ScreenName);
-        //}
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         protected virtual void ReplyTweetInTwitter(Activity activity, ITweet tweet)
@@ -136,23 +110,6 @@ namespace TwitterBotFWIntegration
                     //_conversationCache.AddPendingReplyFromBotToTwitterUser(messageIdAndTimestamp, activity);
                     Debug.WriteLine($"Stored activity with conversation ID '{conversationId}'");
                 }
-
-                //string messageId = activity.ReplyToId;
-                //TwitterUserIdentifier twitterUserIdentifier =
-                //    _conversationCache.GetTwitterUserWaitingForReply(messageIdAndTimestamp);
-
-                //if (twitterUserIdentifier != null)
-                //{
-                //    ReplyInTwitter(activity, twitterUserIdentifier);
-                //}
-                //else
-                //{
-                //    // Looks like we received the reply activity before we got back
-                //    // the response from sending the original message to the bot
-                //    _conversationCache.AddPendingReplyFromBotToTwitterUser(messageIdAndTimestamp, activity);
-
-                //    Debug.WriteLine($"Stored activity with message ID '{messageId}'");
-                //}
             }
         }
 
@@ -185,28 +142,10 @@ namespace TwitterBotFWIntegration
                 Debug.WriteLine(
                     $"Message from user '{tweet.CreatedBy.UserIdentifier.ScreenName}' successfully sent to the bot - message ID is '{sendResult.MessageId}'");
 
-                // Store the Twitter user details so that we know who to reply to
-                // XXX DM時にメッセージを入れる
-                //IdAndTimestamp messageIdAndTimestamp = new IdAndTimestamp(messageId);
-                //TwitterUserIdentifier twitterUserIdentifier = new TwitterUserIdentifier()
-                //{
-                //    TwitterUserId = tweet.CreatedBy.UserIdentifier.Id,
-                //    ScreenName = tweet.CreatedBy.UserIdentifier.ScreenName
-                //};
-                //_conversationCache.AddTwitterUserWaitingForReply(messageIdAndTimestamp, twitterUserIdentifier);
                 _conversationCache.PutLatestTweetOfConversation(new IdAndTimestamp(sendResult.Conversation.ConversationId), tweet);
 
                 _directLineManager.StartPolling();
             }
-
-            //// Check for pending activities
-            //foreach (ActivityForTwitterUserBundle pendingMessage
-            //    in _conversationCache.GetPendingRepliesToTwitterUsers())
-            //{
-            //    ReplyInTwitter(
-            //        pendingMessage.ActivityForTwitterUser,
-            //        pendingMessage.TwitterUserIdentifier);
-            //}
         }
     }
 }

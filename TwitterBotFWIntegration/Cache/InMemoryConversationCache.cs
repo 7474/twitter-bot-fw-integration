@@ -16,16 +16,12 @@ namespace TwitterBotFWIntegration.Cache
     /// </summary>
     public class InMemoryConversationCache : IDirectLineConversationCache, ITweetConversationCache
     {
-        // XXX 遅延応答には30秒はちょっと短い。
-        protected const int DefaultMinCacheExpiryInSeconds = 30;
+        protected const int DefaultMinCacheExpiryInSeconds = 300;
         protected Dictionary<IdAndTimestamp, ITweet> _converstionToLatestTweet;
         protected Dictionary<IdAndTimestamp, ITweet> _converstionToRootTweet;
         protected Dictionary<IdAndTimestamp, string> _tweetToConversation;
         protected Dictionary<IdAndTimestamp, ConversationContext> _conversationContexts;
         protected int _minCacheExpiryInSeconds;
-
-        protected Dictionary<IdAndTimestamp, TwitterUserIdentifier> _twitterUsersWaitingForReply;
-        protected Dictionary<IdAndTimestamp, Activity> _pendingRepliesFromBotToTwitterUser;
 
         /// <summary>
         /// Constructor.
@@ -34,8 +30,6 @@ namespace TwitterBotFWIntegration.Cache
         /// If not provided, the default value is used.</param>
         public InMemoryConversationCache(int minCacheExpiryInSeconds = DefaultMinCacheExpiryInSeconds)
         {
-            _twitterUsersWaitingForReply = new Dictionary<IdAndTimestamp, TwitterUserIdentifier>();
-            _pendingRepliesFromBotToTwitterUser = new Dictionary<IdAndTimestamp, Activity>();
             _converstionToLatestTweet = new Dictionary<IdAndTimestamp, ITweet>();
             _converstionToRootTweet = new Dictionary<IdAndTimestamp, ITweet>();
             _tweetToConversation = new Dictionary<IdAndTimestamp, string>();
@@ -43,126 +37,21 @@ namespace TwitterBotFWIntegration.Cache
             _minCacheExpiryInSeconds = minCacheExpiryInSeconds;
         }
 
-        public IList<ActivityForTwitterUserBundle> GetPendingRepliesToTwitterUsers()
-        {
-            RemoveExpiredData(); // Lazy clean-up
-
-            IList<ActivityForTwitterUserBundle> messageToTwitterUserBundles =
-                new List<ActivityForTwitterUserBundle>();
-
-            if (_twitterUsersWaitingForReply.Count > 0)
-            {
-                foreach (IdAndTimestamp messageIdAndTimestamp
-                    in _pendingRepliesFromBotToTwitterUser.Keys)
-                {
-                    if (_twitterUsersWaitingForReply.ContainsKey(messageIdAndTimestamp))
-                    {
-                        messageToTwitterUserBundles.Add(
-                            new ActivityForTwitterUserBundle(
-                                _pendingRepliesFromBotToTwitterUser[messageIdAndTimestamp],
-                                _twitterUsersWaitingForReply[messageIdAndTimestamp]));
-                    }
-                }
-            }
-
-            return messageToTwitterUserBundles;
-        }
-
-        public TwitterUserIdentifier GetTwitterUserWaitingForReply(IdAndTimestamp messageIdAndTimestamp)
-        {
-            if (messageIdAndTimestamp != null
-                && _twitterUsersWaitingForReply.ContainsKey(messageIdAndTimestamp))
-            {
-                return _twitterUsersWaitingForReply[messageIdAndTimestamp];
-            }
-
-            return null;
-        }
-
-        public bool AddTwitterUserWaitingForReply(
-            IdAndTimestamp messageIdAndTimestamp, TwitterUserIdentifier twitterUserIdentifier)
-        {
-            if (messageIdAndTimestamp != null
-                && twitterUserIdentifier != null
-                && !_twitterUsersWaitingForReply.ContainsKey(messageIdAndTimestamp))
-            {
-                _twitterUsersWaitingForReply.Add(messageIdAndTimestamp, twitterUserIdentifier);
-                return true;
-            }
-
-            return false;
-        }
-
-        public bool RemoveTwitterUserWaitingForReply(IdAndTimestamp messageIdAndTimestamp)
-        {
-            return _twitterUsersWaitingForReply.Remove(messageIdAndTimestamp);
-        }
-
-        public Activity GetPendingReplyFromBotToTwitterUser(IdAndTimestamp messageIdAndTimestamp)
-        {
-            if (messageIdAndTimestamp != null
-                && _pendingRepliesFromBotToTwitterUser.ContainsKey(messageIdAndTimestamp))
-            {
-                return _pendingRepliesFromBotToTwitterUser[messageIdAndTimestamp];
-            }
-
-            return null;
-        }
-
-        public bool AddPendingReplyFromBotToTwitterUser(
-            IdAndTimestamp messageIdAndTimestamp, Activity pendingReplyActivity)
-        {
-            if (messageIdAndTimestamp != null
-                && !string.IsNullOrEmpty(messageIdAndTimestamp.Id)
-                && pendingReplyActivity != null
-                && !_pendingRepliesFromBotToTwitterUser.ContainsKey(messageIdAndTimestamp))
-            {
-                _pendingRepliesFromBotToTwitterUser.Add(messageIdAndTimestamp, pendingReplyActivity);
-                return true;
-            }
-
-            return false;
-        }
-
-        public bool RemovePendingReplyFromBotToTwitterUser(IdAndTimestamp messageIdAndTimestamp)
-        {
-            return _pendingRepliesFromBotToTwitterUser.Remove(messageIdAndTimestamp);
-        }
-
-        /// <summary>
-        /// Clears any records (pending replies and Twitter user identifiers) where the timestamp
-        /// (in MessageIdAndTimestamp) is expired.
-        /// 
-        /// TODO: While the current implementation works, make it nicer e.g. with Linq.
-        /// </summary>
         protected virtual void RemoveExpiredData()
         {
+            RemoveExpiredDataFromDict(_converstionToLatestTweet);
+            RemoveExpiredDataFromDict(_converstionToRootTweet);
+            RemoveExpiredDataFromDict(_tweetToConversation);
+            RemoveExpiredDataFromDict(_conversationContexts);
+        }
+
+        private void RemoveExpiredDataFromDict<T>(IDictionary<IdAndTimestamp, T> dict)
+        {
             DateTime dateTimeNow = DateTime.Now;
-            bool wasRemoved = true;
 
-            while (wasRemoved)
+            foreach (var id in dict.Keys.ToList().Where(x => x.Timestamp.AddSeconds(_minCacheExpiryInSeconds) < dateTimeNow))
             {
-                wasRemoved = false;
-
-                foreach (IdAndTimestamp messageIdAndTimestamp in _pendingRepliesFromBotToTwitterUser.Keys)
-                {
-                    if (messageIdAndTimestamp.Timestamp.AddSeconds(_minCacheExpiryInSeconds) < dateTimeNow)
-                    {
-                        _pendingRepliesFromBotToTwitterUser.Remove(messageIdAndTimestamp);
-                        wasRemoved = true;
-                        break;
-                    }
-                }
-
-                foreach (IdAndTimestamp messageIdAndTimestamp in _twitterUsersWaitingForReply.Keys)
-                {
-                    if (messageIdAndTimestamp.Timestamp.AddSeconds(_minCacheExpiryInSeconds) < dateTimeNow)
-                    {
-                        _twitterUsersWaitingForReply.Remove(messageIdAndTimestamp);
-                        wasRemoved = true;
-                        break;
-                    }
-                }
+                dict.Remove(id);
             }
         }
 
@@ -191,6 +80,9 @@ namespace TwitterBotFWIntegration.Cache
 
         public IEnumerable<ConversationContext> GetConversations()
         {
+            // XXX ここで破棄でいいのか？
+            RemoveExpiredData();
+
             // XXX 複製にならないかも？
             return _conversationContexts.Values.ToList();
         }

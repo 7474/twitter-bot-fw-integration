@@ -24,20 +24,23 @@ namespace TwitterBotFWIntegration
         /// </summary>
         public event EventHandler<Tweetinvi.Events.MatchedTweetReceivedEventArgs> TweetReceived;
 
+        private IUser _botUser;
         private Tweetinvi.Streaming.IFilteredStream _filteredStream;
-
-        // TODO to configurable
-        private long _botUserId = 1305161053978779650;
-        private string _botScreenName = "RealDiceBot";
 
         /// <summary>
         /// Constructor.
         /// </summary>
         /// <param name="consumerKey">The Twitter consumer key.</param>
         /// <param name="consumerSecret">The Twitter consumer secret.</param>
+        /// <param name="bearerToken"></param>
         /// <param name="accessToken">The Twitter app access token.</param>
         /// <param name="accessTokenSecret">The Twitter app secret.</param>
-        public TwitterManager(string consumerKey, string consumerSecret, string bearerToken = null, string accessToken = null, string accessTokenSecret = null)
+        public TwitterManager(
+            string consumerKey,
+            string consumerSecret,
+            string bearerToken = null,
+            string accessToken = null,
+            string accessTokenSecret = null)
         {
             if (string.IsNullOrEmpty(consumerKey) || string.IsNullOrEmpty(consumerSecret))
             {
@@ -58,6 +61,7 @@ namespace TwitterBotFWIntegration
             {
                 Tweetinvi.Auth.SetUserCredentials(consumerKey, consumerSecret, accessToken, accessTokenSecret);
             }
+            _botUser = Tweetinvi.User.GetAuthenticatedUser();
         }
 
         public void Dispose()
@@ -77,7 +81,7 @@ namespace TwitterBotFWIntegration
             {
                 // For Reply
                 _filteredStream = Tweetinvi.Stream.CreateFilteredStream();
-                _filteredStream.AddTrack("@" + _botScreenName);
+                _filteredStream.AddTrack("@" + _botUser.ScreenName);
                 _filteredStream.StreamStarted += OnStreamStarted;
                 _filteredStream.MatchingTweetReceived += OnMatchingTweetReceived;
                 _filteredStream.StartStreamMatchingAllConditions();
@@ -98,7 +102,7 @@ namespace TwitterBotFWIntegration
         {
             Debug.WriteLine("OnMatchingTweetReceived Twitter message received");
             Debug.WriteLine(JsonConvert.SerializeObject(e));
-            if (e.Tweet.CreatedBy.Id == _botUserId)
+            if (e.Tweet.CreatedBy.Id == _botUser.Id)
             {
                 Debug.WriteLine("Skip. Tweet is created by bot.");
                 return;
@@ -112,7 +116,7 @@ namespace TwitterBotFWIntegration
             var atNames = string.Join(" ",
                 toScreanNames
                     .Where(x => !string.IsNullOrEmpty(x))
-                    .Where(x => x != _botScreenName)
+                    .Where(x => x != _botUser.ScreenName)
                     .Distinct()
                     .Select(x => "@" + x));
 
@@ -122,42 +126,5 @@ namespace TwitterBotFWIntegration
                 $"{atNames} {messageText}".SafeSubstring(0, 140),
                 replyTo);
         }
-
-        #region Ref For UserStream...
-        ///// <summary>
-        ///// Sends the given message (text) to the user matching the given IDs.
-        ///// </summary>
-        ///// <param name="messageText">The message to send.</param>
-        ///// <param name="recipientId">The Twitter recipient ID.</param>
-        ///// <param name="recipientScreenName">The Twitter recipient screen name.</param>
-        //public void SendMessage(string messageText, long recipientId = 0, string recipientScreenName = null)
-        //{
-        //    Debug.WriteLine(
-        //        $"Sending message to {(string.IsNullOrEmpty(recipientScreenName) ? "user" : recipientScreenName)} with ID '{recipientId.ToString()}'");
-
-        //    Tweetinvi.Models.IUserIdentifier userIdentifier = new Tweetinvi.Models.UserIdentifier(recipientId)
-        //    {
-        //        ScreenName = recipientScreenName
-        //    };
-
-        //    Tweetinvi.Message.PublishMessage(messageText, userIdentifier.Id);
-        //}
-
-        //private void OnMessageSent(object sender, Tweetinvi.Events.MessageEventArgs e)
-        //{
-        //    Debug.WriteLine("Twitter message sent");
-        //}
-
-        //private void OnMessageReceived(object sender, Tweetinvi.Events.MessageEventArgs e)
-        //{
-        //    Debug.WriteLine("Twitter message received");
-        //    TweetReceived?.Invoke(this, e);
-        //}
-
-        //private void OnTweetFavouritedByMe(object sender, Tweetinvi.Events.TweetFavouritedEventArgs e)
-        //{
-        //    Debug.WriteLine("Tweet favourited by 'me'");
-        //}
-        #endregion
     }
 }
