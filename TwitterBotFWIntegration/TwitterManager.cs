@@ -121,6 +121,7 @@ namespace TwitterBotFWIntegration
                     .Select(x => "@" + x));
 
             // TODO メッセージをURLなどを考慮した長さに正規化する
+            // TODO 添付やカードを展開する
             // https://github.com/linvi/tweetinvi/issues/53
             return Tweetinvi.Tweet.PublishTweetInReplyTo(
                 $"{atNames} {messageText}".SafeSubstring(0, 140),
