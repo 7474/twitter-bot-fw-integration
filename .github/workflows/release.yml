@@ -13,9 +13,9 @@ jobs:
       with:
         dotnet-version: 3.1
     - name: Install dependencies
-      run: dotnet restore
+      run: dotnet restore ./TwitterBotFWIntegration/TwitterBotFWIntegration.csproj
     - name: Build
-      run: dotnet build --configuration Release --no-restore
+      run: dotnet build --configuration Release --no-restore ./TwitterBotFWIntegration/TwitterBotFWIntegration.csproj
 #     - name: Test
 #       run: dotnet test --no-restore --verbosity normal
     - name: Pack
