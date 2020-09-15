@@ -84,7 +84,8 @@ namespace TwitterBotFWIntegration
                 _filteredStream.AddTrack("@" + _botUser.ScreenName);
                 _filteredStream.StreamStarted += OnStreamStarted;
                 _filteredStream.MatchingTweetReceived += OnMatchingTweetReceived;
-                _filteredStream.StartStreamMatchingAllConditions();
+                // TODO これに限らず例外処理と継続は見ておく
+                _filteredStream.StartStreamMatchingAllConditionsAsync();
             }
             else
             {
