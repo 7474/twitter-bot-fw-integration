@@ -135,7 +135,7 @@ namespace TwitterBotFWIntegration
             var mediaBinaries = mediaUrls.Take(4)
                     .Select(x => new BinaryReader(
                         WebRequest.Create(x).GetResponse().GetResponseStream()
-                    ).ReadBytes(int.MaxValue)).ToList();
+                    ).ReadAllBytes()).ToList();
             return Tweetinvi.Tweet.PublishTweet(
                 $"{atNames} {messageText}".SafeSubstring(0, 140),
                 new PublishTweetOptionalParameters
