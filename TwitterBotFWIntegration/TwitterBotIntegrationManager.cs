@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Tweetinvi.Models;
 using TwitterBotFWIntegration.Cache;
@@ -75,8 +76,10 @@ namespace TwitterBotFWIntegration
             Debug.WriteLine(
                 $"Replying to user '{tweet.CreatedBy.ScreenName}' using message in activity with conversation ID '{conversationId}'");
 
+            var mediaUrls = activity.Attachments.Select(x => x.ContentUrl).ToList();
+
             var replyTweet = _twitterManager.SendReply(
-                activity.Text, tweet.Id,
+                activity.Text, mediaUrls, tweet.Id,
                 tweet.CreatedBy.ScreenName, tweet.InReplyToScreenName, rootTweet?.CreatedBy.ScreenName);
 
             // 続きを呟くためのに入れておく

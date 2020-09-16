@@ -111,7 +111,12 @@ namespace TwitterBotFWIntegration
             TweetReceived?.Invoke(this, e);
         }
 
-        public ITweet SendReply(string messageText, long replyToId, params string[] toScreanNames)
+        public ITweet SendReply(
+            string messageText,
+            // TODO そのうち渡し方を見直す
+            IList<string> mediaUrls,
+            long replyToId,
+            params string[] toScreanNames)
         {
             var replyTo = new TweetIdentifier(replyToId);
             var atNames = string.Join(" ",
@@ -122,10 +127,12 @@ namespace TwitterBotFWIntegration
                     .Select(x => "@" + x));
 
             // TODO メッセージをURLなどを考慮した長さに正規化する
-            // TODO 添付やカードを展開する
+            // TODO 添付の仕方を見直す
             // https://github.com/linvi/tweetinvi/issues/53
             return Tweetinvi.Tweet.PublishTweetInReplyTo(
-                $"{atNames} {messageText}".SafeSubstring(0, 140),
+                $"{atNames} {messageText}".SafeSubstring(0, 120)
+                 + "\n"
+                 + string.Join("\n", mediaUrls),
                 replyTo);
         }
     }
