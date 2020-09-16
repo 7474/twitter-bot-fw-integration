@@ -2,8 +2,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Net;
 using Tweetinvi.Models;
+using Tweetinvi.Parameters;
 using TwitterBotFWIntegration.Extensions;
 
 namespace TwitterBotFWIntegration
@@ -127,13 +130,19 @@ namespace TwitterBotFWIntegration
                     .Select(x => "@" + x));
 
             // TODO メッセージをURLなどを考慮した長さに正規化する
-            // TODO 添付の仕方を見直す
+            // TODO 添付の仕方を見直す（ビデオ対応など。。。）
             // https://github.com/linvi/tweetinvi/issues/53
-            return Tweetinvi.Tweet.PublishTweetInReplyTo(
-                $"{atNames} {messageText}".SafeSubstring(0, 120)
-                 + "\n"
-                 + string.Join("\n", mediaUrls),
-                replyTo);
+            var mediaBinaries = mediaUrls.Take(4)
+                    .Select(x => new BinaryReader(
+                        WebRequest.Create(x).GetResponse().GetResponseStream()
+                    ).ReadBytes(int.MaxValue)).ToList();
+            return Tweetinvi.Tweet.PublishTweet(
+                $"{atNames} {messageText}".SafeSubstring(0, 140),
+                new PublishTweetOptionalParameters
+                {
+                    InReplyToTweet = replyTo,
+                    MediaBinaries = mediaBinaries,
+                });
         }
     }
 }
